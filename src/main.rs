@@ -8,7 +8,7 @@ mod bfs;
 use bfs::Bfs;
 
 #[derive(Parser)]
-#[command(name = "mkfs.bfs", version, about = "Create SCO BFS filesystem images")]
+#[command(name = "mkfs-bfs", version, about = "Create SCO BFS filesystem images")]
 struct Cli {
     /// Populate from this directory (flattened — BFS has no subdirectories)
     #[arg(short = 'd', long)]
@@ -47,7 +47,7 @@ fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("mkfs.bfs: {e:#}");
+            eprintln!("mkfs-bfs: {e:#}");
             ExitCode::FAILURE
         }
     }

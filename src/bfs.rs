@@ -199,7 +199,7 @@ impl Bfs {
 
     fn add_file(&mut self, path: &Path, name: &str) -> anyhow::Result<()> {
         if name.len() > NAMELEN {
-            eprintln!("mkfs.bfs: warning: name truncated to {NAMELEN} bytes: {name}");
+            eprintln!("mkfs-bfs: warning: name truncated to {NAMELEN} bytes: {name}");
         }
 
         for existing in &self.entries {

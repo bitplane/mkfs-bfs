@@ -1,4 +1,4 @@
-# mkfs.bfs
+# mkfs-bfs
 
 Create SCO BFS (Boot File System) images in Rust.
 
@@ -15,7 +15,7 @@ From crates.io:
 cargo install mkfs-bfs
 ```
 
-This installs a binary called `mkfs.bfs`. Pre-built binaries for Linux
+This installs a binary called `mkfs-bfs`. Pre-built binaries for Linux
 (x86_64 / aarch64), macOS (universal), and Windows are also attached to
 each [GitHub release][releases].
 
@@ -25,12 +25,12 @@ each [GitHub release][releases].
 
 ```bash
 # Create an empty 4 MB image.
-mkfs.bfs out.bfs 4
+mkfs-bfs out.bfs 4
 
 # Populate a new image from a directory tree (subdirectories are walked
 # recursively and files are flattened into the BFS root, since BFS has
 # no subdirectory support).
-mkfs.bfs -d ./payload out.bfs 4
+mkfs-bfs -d ./payload out.bfs 4
 
 # Mount on Linux (the kernel module is `bfs`).
 sudo mount -o loop,ro -t bfs out.bfs /mnt
