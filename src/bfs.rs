@@ -273,25 +273,16 @@ impl Bfs {
     fn write_root_dir(&mut self) -> anyhow::Result<()> {
         let entry_count = self.entries.len() as u32;
         let size = entry_count * DIRENT_SIZE as u32;
-        let block_count = if size == 0 {
-            0
-        } else {
-            size.div_ceil(BSIZE as u32)
-        };
+        // Linux BFS cannot grow the root directory. Reserve a slot for every
+        // user inode plus "." and "..", even when the image starts empty.
+        let capacity = LAST_INO - ROOT_INO + 2;
+        let block_count = (capacity * DIRENT_SIZE as u32).div_ceil(BSIZE as u32);
         let start = self.reserve_blocks(block_count)?;
 
         let root = self.inodes[0].as_mut().expect("root inode missing");
         root.sblock = start;
-        root.eblock = if block_count == 0 {
-            0
-        } else {
-            start + block_count - 1
-        };
-        root.eoffset = if size == 0 {
-            u32::MAX
-        } else {
-            start * BSIZE as u32 + size - 1
-        };
+        root.eblock = start + block_count - 1;
+        root.eoffset = start * BSIZE as u32 + size - 1;
 
         let mut buf_off = (start as usize) * BSIZE;
         for entry in &self.entries {
@@ -389,7 +380,7 @@ mod tests {
         assert_eq!(stats.entries, 3);
 
         let bytes = fs::read(&img_path).unwrap();
-        // Root dir starts at the data area; it contains 3 dirents = 48 bytes.
+        // The root directory contains 3 live dirents = 48 bytes.
         let root_inode_off = BSIZE; // inode 2 at byte 512
         let root_sblock = read_u32_le(&bytes, root_inode_off + 4);
         let dir_off = (root_sblock as usize) * BSIZE;
@@ -406,5 +397,59 @@ mod tests {
         let mut bfs = Bfs::new(1).unwrap();
         let err = bfs.populate_flat(src.path()).unwrap_err();
         assert!(err.to_string().contains("duplicate"));
+    }
+
+    #[test]
+    fn root_directory_has_room_for_every_user_inode() {
+        let dir = TempDir::new().unwrap();
+        let source = dir.path().join("empty");
+        File::create(&source).unwrap();
+
+        for count in [0, 30, 31, 503] {
+            let mut bfs = Bfs::new(1).unwrap();
+            for i in 0..count {
+                bfs.add_file(&source, &format!("file{i}")).unwrap();
+            }
+            let output = dir.path().join("out.bfs");
+            bfs.write_to(&output).unwrap();
+            let bytes = fs::read(output).unwrap();
+            let start = read_u32_le(&bytes, BSIZE + 4) as usize * BSIZE;
+            let end = (read_u32_le(&bytes, BSIZE + 8) as usize + 1) * BSIZE;
+            let live_end = read_u32_le(&bytes, BSIZE + 12) as usize + 1;
+
+            assert!((end - start) / DIRENT_SIZE >= 505);
+            assert_eq!(live_end - start, (count + 2) * DIRENT_SIZE);
+            assert!(bytes[live_end..end].iter().all(|&byte| byte == 0));
+            for i in 0..count + 2 {
+                let offset = start + i * DIRENT_SIZE;
+                let ino = u16::from_le_bytes(bytes[offset..offset + 2].try_into().unwrap());
+                assert_ne!(ino, 0);
+            }
+        }
+    }
+
+    #[test]
+    fn full_image_reserves_space_for_directory_capacity() {
+        let dir = TempDir::new().unwrap();
+        let source = dir.path().join("payload");
+        // 1 MiB minus the superblock/inodes (32 KiB) and root (8 KiB).
+        let max_payload = 1024 * 1024 - 32 * 1024 - 8 * 1024;
+        for extra in [0, 1] {
+            File::create(&source)
+                .unwrap()
+                .set_len(max_payload + extra)
+                .unwrap();
+            let mut bfs = Bfs::new(1).unwrap();
+            bfs.add_file(&source, "payload").unwrap();
+            let output = dir.path().join(format!("out{extra}.bfs"));
+            let result = bfs.write_to(&output);
+            if extra == 0 {
+                result.unwrap();
+                assert_eq!(fs::metadata(output).unwrap().len(), 1024 * 1024);
+            } else {
+                assert!(result.err().unwrap().to_string().contains("no free blocks"));
+                assert!(!output.exists());
+            }
+        }
     }
 }
